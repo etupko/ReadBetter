@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReadBetter - Enhanced Reader</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background-color: #f5f5f7;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: white;
+            padding: 20px;
+            border-right: 1px solid #eee;
+        }
+
+        .chapter-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .chapter-item {
+            padding: 10px;
+            margin: 5px 0;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+
+        .chapter-item:hover {
+            background: #f0f0f0;
+        }
+
+        .chapter-item.active {
+            background: #007AFF;
+            color: white;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+        }
+
+        .reader-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 30px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .control-button, .control-select {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #007AFF;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .progress-bar {
+            height: 4px;
+            background: #eee;
+            margin: 20px 0;
+            border-radius: 2px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: #FDE06B;
+            transition: width 0.3s;
+        }
+
+        .book-content {
+            font-size: 18px;
+            line-height: 1.8;
+            margin-top: 20px;
+            position: relative;
+        }
+
+        .highlight-tracker {
+            position: absolute;
+            background: #FDE06B;
+            height: 1.4em;
+            top: 0.2em;
+            left: 0;
+            width: 0;
+            transition: width 0.3s ease, left 0.3s ease;
+            z-index: 0;
+            border-radius: 3px;
+        }
+
+        .text-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .word {
+            display: inline;
+            padding: 2px 0;
+            margin: 0 1px;
+            position: relative;
+        }
+
+        .chapter-title {
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Chapters</h2>
+        <ul class="chapter-list" id="chapterList"></ul>
+    </div>
+
+    <div class="main-content">
+        <div class="reader-container">
+            <h1 class="chapter-title" id="chapterTitle">Chapter 1</h1>
+            
+            <div class="controls-container">
+                <button class="control-button" id="playButton">Play</button>
+                <select class="control-select" id="speedControl">
+                    <option value="0.75">0.75x</option>
+                    <option value="1" selected>1x</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                </select>
+                <select class="control-select" id="voiceSelect"></select>
+            </div>
+
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+
+            <div class="book-content">
+                <div class="highlight-tracker" id="highlightTracker"></div>
+                <div class="text-content" id="textContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class ReaderSystem {
+            constructor() {
+                this.initializeElements();
+                this.initializeState();
+                this.initializeChapters();
+                this.setupEventListeners();
+                this.initializeVoices();
+            }
+
+            initializeElements() {
+                this.textContent = document.getElementById('textContent');
+                this.highlightTracker = document.getElementById('highlightTracker');
+                this.playButton = document.getElementById('playButton');
+                this.speedControl = document.getElementById('speedControl');
+                this.voiceSelect = document.getElementById('voiceSelect');
+                this.progressFill = document.getElementById('progressFill');
+                this.chapterList = document.getElementById('chapterList');
+                this.chapterTitle = document.getElementById('chapterTitle');
+            }
+
+            initializeState() {
+                this.words = [];
+                this.wordPositions = [];
+                this.currentIndex = 0;
+                this.isReading = false;
+                this.speechSynthesis = window.speechSynthesis;
+                this.utterance = null;
+                this.pausedAt = 0;
+                this.charOffset = 0;
+            }
+
+            initializeChapters() {
+                this.chapters = [
+                    {
+                        title: "Chapter 1: The Beginning",
+                        text: "The soft glow of dawn was just beginning to peek through the library windows. Sarah had always loved these quiet moments before the library opened. The only sounds were the gentle hum of computers and the whisper of pages settling in their shelves."
+                    },
+                    {
+                        title: "Chapter 2: The Discovery",
+                        text: "As digital pages turned themselves, readers found new ways to connect with their favorite stories. The boundaries between reality and fiction began to blur, creating an experience that was more than just reading."
+                    },
+                    {
+                        title: "Chapter 3: The Future",
+                        text: "The future of reading had arrived, bringing with it possibilities that once existed only in imagination. Every word came alive, every sentence breathed with new meaning, and every paragraph painted vivid pictures."
+                    }
+                ];
+
+                this.updateChapterList();
+                this.loadChapter(0);
+            }
+
+            async initializeVoices() {
+                const getVoices = () => {
+                    return new Promise(resolve => {
+                        let voices = this.speechSynthesis.getVoices();
+                        if (voices.length) {
+                            resolve(voices);
+                        } else {
+                            this.speechSynthesis.addEventListener('voiceschanged', () => {
+                                voices = this.speechSynthesis.getVoices();
+                                resolve(voices);
+                            });
+                        }
+                    });
+                };
+
+                const voices = await getVoices();
+                this.voiceSelect.innerHTML = voices
+                    .filter(voice => voice.lang.startsWith('en'))
+                    .map(voice => `<option value="${voice.name}">${voice.name}</option>`)
+                    .join('');
+            }
+
+            setupEventListeners() {
+                this.playButton.addEventListener('click', () => this.togglePlay());
+                this.speedControl.addEventListener('change', () => this.updateSpeed());
+                this.voiceSelect.addEventListener('change', () => this.updateVoice());
+            }
+
+            updateChapterList() {
+                this.chapterList.innerHTML = this.chapters.map((chapter, index) => `
+                    <li class="chapter-item ${index === this.currentChapter ? 'active' : ''}"
+                        data-chapter="${index}">
+                        ${chapter.title}
+                    </li>
+                `).join('');
+
+                this.chapterList.querySelectorAll('.chapter-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const index = parseInt(item.dataset.chapter);
+                        this.loadChapter(index);
+                    });
+                });
+            }
+
+            loadChapter(index) {
+                if (this.isReading) this.pauseReading();
+                
+                this.currentChapter = index;
+                this.chapterTitle.textContent = this.chapters[index].title;
+                this.updateChapterList();
+
+                const text = this.chapters[index].text;
+                this.words = text.split(' ');
+                this.charOffset = 0;
+                this.wordPositions = [];
+                
+                // Create word elements and calculate positions
+                this.textContent.innerHTML = this.words.map((word, i) => {
+                    const span = document.createElement('span');
+                    span.className = 'word';
+                    span.textContent = word + ' ';
+                    span.dataset.index = i;
+                    this.wordPositions.push({
+                        start: this.charOffset,
+                        end: this.charOffset + word.length
+                    });
+                    this.charOffset += word.length + 1; // +1 for space
+                    return span.outerHTML;
+                }).join('');
+
+                this.currentIndex = 0;
+                this.updateHighlight();
+                this.updateProgress(0);
+            }
+
+            togglePlay() {
+                this.isReading ? this.pauseReading() : this.startReading();
+            }
+
+            startReading() {
+                if (this.isReading) return;
+                
+                this.isReading = true;
+                this.playButton.textContent = 'Pause';
+                
+                const startPosition = this.pausedAt || this.currentIndex;
+                const textToRead = this.words.slice(startPosition).join(' ');
+
+                this.utterance = new SpeechSynthesisUtterance(textToRead);
+                this.utterance.voice = this.speechSynthesis.getVoices()
+                    .find(voice => voice.name === this.voiceSelect.value);
+                this.utterance.rate = parseFloat(this.speedControl.value);
+
+                this.utterance.onboundary = (e) => {
+                    if (e.name === 'word') {
+                        const absolutePosition = startPosition * this.words[0].length + e.charIndex;
+                        const wordIndex = this.findWordIndex(absolutePosition);
+                        if (wordIndex !== -1) {
+                            this.currentIndex = wordIndex;
+                            this.updateHighlight();
+                            this.updateProgress((wordIndex / this.words.length) * 100);
+                        }
+                    }
+                };
+
+                this.utterance.onend = () => {
+                    this.isReading = false;
+                    this.playButton.textContent = 'Play';
+                    this.pausedAt = 0;
+                    this.currentIndex = 0;
+                };
+
+                this.speechSynthesis.speak(this.utterance);
+            }
+
+            findWordIndex(charPosition) {
+                return this.wordPositions.findIndex(
+                    pos => charPosition >= pos.start && charPosition <= pos.end
+                );
+            }
+
+            updateHighlight() {
+                if (this.currentIndex >= this.words.length) return;
+                
+                const wordElements = Array.from(this.textContent.children);
+                const currentWord = wordElements[this.currentIndex];
+                const containerRect = this.textContent.getBoundingClientRect();
+                const wordRect = currentWord.getBoundingClientRect();
+                
+                const highlightLeft = wordRect.left - containerRect.left;
+                const highlightWidth = wordRect.right - containerRect.left;
+                
+                this.highlightTracker.style.width = `${highlightWidth}px`;
+                this.highlightTracker.style.left = `${highlightLeft}px`;
+
+                // Auto-scroll to keep word visible
+                currentWord.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center',
+                    inline: 'nearest'
+                });
+            }
+
+            pauseReading() {
+                if (!this.isReading) return;
+                
+                this.isReading = false;
+                this.playButton.textContent = 'Play';
+                this.pausedAt = this.currentIndex;
+                this.speechSynthesis.cancel();
+            }
+
+            updateProgress(percentage) {
+                this.progressFill.style.width = `${percentage}%`;
+                this.progressFill.style.backgroundColor = 
+                    percentage === 100 ? '#4CAF50' : '#FDE06B';
+            }
+
+            updateSpeed() {
+                if (this.isReading) {
+                    this.pauseReading();
+                    this.startReading();
+                }
+            }
+
+            updateVoice() {
+                if (this.isReading) {
+                    this.pauseReading();
+                    this.startReading();
+                }
+            }
+        }
+
+        window.addEventListener('load', () => {
+            const reader = new ReaderSystem();
+        });
+    </script>
+</body>
+</html>
